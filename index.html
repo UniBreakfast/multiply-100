@@ -103,12 +103,37 @@
   </div>
 
   <script>
-    let correctCount = 0;
-    let incorrectCount = 0;
-    let question = null;
-    let queue = [];
-    let lowerBound = 0;
-    let upperBound = 100;
+    let state = loadState();
+
+    if (state.queue.length) continueGame();
+    else document.getElementById('start-button').addEventListener('click', startGame);
+    
+    function loadState() {
+      const json = localStorage.getItem('mult100_state');
+
+      if (json) {
+        return JSON.parse(json);
+      } else {
+        return {
+          correctCount: 0,
+          incorrectCount: 0,
+          queue: [],
+          question: {},
+          lowerBound: 0,
+          upperBound: 100,
+        };
+      }
+    }
+
+    function continueGame() {
+      document.getElementById('start-screen').hidden = true;
+      document.getElementById('game-screen').hidden = false;
+      displayQuestion();
+    }
+
+    function saveState() {
+      localStorage.setItem('mult100_state', JSON.stringify(state));
+    }
 
     function genPairs(low, high) {
       let pairs = [];
@@ -134,23 +159,23 @@
     }
 
     function initializeQueue() {
-      queue = genPairs(lowerBound, upperBound);
+      state.queue = genPairs(state.lowerBound, state.upperBound);
 
-      sortBySum(queue);
-      addPros(queue);
+      sortBySum(state.queue);
+      addPros(state.queue);
     }
 
     function getNextQuestion() {
-      if (queue.length === 0) {
+      if (state.queue.length === 0) {
         location.reload();
       }
-      return queue.shift();
+      return state.queue.shift();
     }
 
     function displayQuestion() {
-      question = getNextQuestion();
+      state.question = getNextQuestion();
 
-      let { a, b } = question;
+      let { a, b } = state.question;
 
       if (Math.random() < 0.5) {
         [a, b] = [b, a];
@@ -159,16 +184,19 @@
       document.getElementById('question').textContent = `${a} × ${b} = ?`;
 
       const optionsContainer = document.getElementById('options');
+
       optionsContainer.innerHTML = '';
 
-      const options = genOptions(question, [
+      const options = genOptions(state.question, [
         ({ product }) => shuffleDigits(product),
         ({ product }) => modDigit(product),
         ({ product }) => modDigits(product),
         ({ a, b }) => multiplyModded(a, b),
       ]);
+
       options.forEach(option => {
         const button = document.createElement('button');
+
         button.classList.add('option');
         button.textContent = option;
         button.onclick = () => {
@@ -207,34 +235,35 @@
 
     function checkAnswer(answer) {
       const feedback = document.getElementById('feedback');
-      if (parseInt(answer) === question.product) {
-        correctCount++;
+      if (parseInt(answer) === state.question.product) {
+        state.correctCount++;
         feedback.textContent = 'Correct!';
         feedback.style.color = 'green';
-        question.progress++;
+        state.question.progress++;
 
-        const delay = getBounce(question.progress);
+        const delay = getBounce(state.question.progress);
 
-        queue.splice(Math.min(delay, queue.length), 0, question);
+        state.queue.splice(Math.min(delay, state.queue.length), 0, state.question);
       } else {
-        incorrectCount++;
+        state.incorrectCount++;
         feedback.textContent = 'Incorrect. Try again!';
         feedback.style.color = 'red';
-        question.progress = 0;
-        queue.splice(3, 0, question);
+        state.question.progress = 0;
+        state.queue.splice(3, 0, state.question);
       }
+      saveState();
       updateScore();
       setTimeout(displayQuestion, 500);
     }
 
     function updateScore() {
-      document.getElementById('score').textContent = `Score: ${correctCount} correct, ${incorrectCount} incorrect`;
+      document.getElementById('score').textContent = `Score: ${state.correctCount} correct, ${state.incorrectCount} incorrect`;
     }
 
     function startGame() {
-      lowerBound = parseInt(document.getElementById('lower-bound').value);
-      upperBound = parseInt(document.getElementById('upper-bound').value);
-      if (isNaN(lowerBound) || isNaN(upperBound) || lowerBound < 0 || lowerBound > 1000 || upperBound < 0 || upperBound > 1000 || lowerBound > upperBound) {
+      state.lowerBound = parseInt(document.getElementById('lower-bound').value);
+      state.upperBound = parseInt(document.getElementById('upper-bound').value);
+      if (isNaN(state.lowerBound) || isNaN(state.upperBound) || state.lowerBound < 0 || state.lowerBound > 1000 || state.upperBound < 0 || state.upperBound > 1000 || state.lowerBound > state.upperBound) {
         alert('Please enter a valid number between 0 and 1000 and ensure the lower bound is less than the upper bound.');
         return;
       }
@@ -396,7 +425,6 @@
       return rnd(lowerLimit, upperLimit);
     }
 
-    document.getElementById('start-button').addEventListener('click', startGame);
   </script>
 </body>
 
