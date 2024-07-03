@@ -1,0 +1,434 @@
+<html>
+
+<head>
+  <base href="https://multiply100.com" />
+  <title>Multiply100 - Multiplication Table Training</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f0f0f0;
+    }
+
+    .container {
+      background-color: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    .question,
+    .start-prompt {
+      font-size: 24px;
+      margin: 20px 0;
+    }
+
+    .options {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .option,
+    #start-button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 8px 32px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 24px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 5px;
+      transition: 0.3s;
+      font-weight: bold;
+      font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+    }
+
+    .option:disabled {
+      scale: 0.9;
+    }
+
+    .option:hover,
+    #start-button:hover {
+      background-color: #45a049;
+    }
+
+    .score {
+      margin-top: 20px;
+      font-size: 18px;
+    }
+
+    .feedback {
+      margin-top: 10px;
+      font-weight: bold;
+      min-height: 24px;
+    }
+
+    #lower-bound,
+    #upper-bound {
+      font-size: 18px;
+      padding: 10px;
+      width: 90px;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div id="start-screen">
+      <div class="start-prompt">Enter the number to start from (0-100):</div>
+      from <input type="number" id="lower-bound" min="0" max="100" value="0">
+      to <input type="number" id="upper-bound" min="0" max="1000" value="30">
+      <button id="start-button">Start</button>
+    </div>
+    <div id="game-screen" hidden>
+      <h1 class="question" id="question"></h1>
+      <div class="options" id="options"></div>
+      <div class="score" id="score"></div>
+      <div class="feedback" id="feedback"></div>
+    </div>
+  </div>
+
+  <script>
+    let state = loadState();
+
+    if (state.queue.length) continueGame();
+    else document.getElementById('start-button').addEventListener('click', startGame);
+    
+    function loadState() {
+      const json = localStorage.getItem('mult100_state');
+
+      if (json) {
+        return JSON.parse(json);
+      } else {
+        return {
+          correctCount: 0,
+          incorrectCount: 0,
+          queue: [],
+          question: {},
+          lowerBound: 0,
+          upperBound: 100,
+        };
+      }
+    }
+
+    function continueGame() {
+      document.getElementById('start-screen').hidden = true;
+      document.getElementById('game-screen').hidden = false;
+      displayQuestion();
+    }
+
+    function saveState() {
+      localStorage.setItem('mult100_state', JSON.stringify(state));
+    }
+
+    function genPairs(low, high) {
+      let pairs = [];
+
+      for (let a = 0; a <= high; a++) {
+        for (let b = Math.max(a, low); b <= high; b++) {
+          pairs.push({ a, b });
+        }
+      }
+
+      return pairs;
+    }
+
+    function sortBySum(pairs) {
+      return pairs.sort((obj1, obj2) => (obj1.a + obj1.b) - (obj2.a + obj2.b));
+    }
+
+    function addPros(array) {
+      array.forEach(obj => {
+        obj.product = obj.a * obj.b;
+        obj.progress = 0;
+      });
+    }
+
+    function initializeQueue() {
+      state.queue = genPairs(state.lowerBound, state.upperBound);
+
+      sortBySum(state.queue);
+      addPros(state.queue);
+    }
+
+    function getNextQuestion() {
+      if (state.queue.length === 0) {
+        location.reload();
+      }
+      return state.queue.shift();
+    }
+
+    function displayQuestion() {
+      state.question = getNextQuestion();
+
+      let { a, b } = state.question;
+
+      if (Math.random() < 0.5) {
+        [a, b] = [b, a];
+      }
+
+      document.getElementById('question').textContent = `${a} × ${b} = ?`;
+
+      const optionsContainer = document.getElementById('options');
+
+      optionsContainer.innerHTML = '';
+
+      const options = genOptions(state.question, [
+        ({ product }) => shuffleDigits(product),
+        ({ product }) => modDigit(product),
+        ({ product }) => modDigits(product),
+        ({ a, b }) => multiplyModded(a, b),
+      ]);
+
+      options.forEach(option => {
+        const button = document.createElement('button');
+
+        button.classList.add('option');
+        button.textContent = option;
+        button.onclick = () => {
+          checkAnswer(option);
+          button.disabled = true;
+        };
+        optionsContainer.appendChild(button);
+      });
+
+      updateScore();
+    }
+
+    function genOptions(obj, functions) {
+      const { product, progress } = obj;
+      const options = [product];
+
+      // Fill the array with numbers generated by the functions
+      for (let i = 0; i < Math.min(progress, 7); i++) {
+        let num;
+        do {
+          const i = rnd(functions.length - 1);
+          const fn = functions[i];
+          num = Math.abs(fn(obj));
+        } while (isNaN(num) || options.includes(num)); // Ensure uniqueness
+        options.push(num);
+      }
+
+      // Shuffle the array
+      for (let i = options.length - 1; i > 0; i--) {
+        const j = rnd(i);
+        [options[i], options[j]] = [options[j], options[i]];
+      }
+
+      return options;
+    }
+
+    function checkAnswer(answer) {
+      const feedback = document.getElementById('feedback');
+      if (parseInt(answer) === state.question.product) {
+        state.correctCount++;
+        feedback.textContent = 'Correct!';
+        feedback.style.color = 'green';
+        state.question.progress++;
+
+        const delay = getBounce(state.question.progress);
+
+        state.queue.splice(Math.min(delay, state.queue.length), 0, state.question);
+      } else {
+        state.incorrectCount++;
+        feedback.textContent = 'Incorrect. Try again!';
+        feedback.style.color = 'red';
+        state.question.progress = 0;
+        state.queue.splice(3, 0, state.question);
+      }
+      saveState();
+      updateScore();
+      setTimeout(displayQuestion, 500);
+    }
+
+    function updateScore() {
+      document.getElementById('score').innerHTML = `<span style="color:green">${state.correctCount}</span> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; <span style="color:red">${state.incorrectCount}</span>`;
+    }
+
+    function startGame() {
+      state.lowerBound = parseInt(document.getElementById('lower-bound').value);
+      state.upperBound = parseInt(document.getElementById('upper-bound').value);
+      if (isNaN(state.lowerBound) || isNaN(state.upperBound) || state.lowerBound < 0 || state.lowerBound > 1000 || state.upperBound < 0 || state.upperBound > 1000 || state.lowerBound > state.upperBound) {
+        alert('Please enter a valid number between 0 and 1000 and ensure the lower bound is less than the upper bound.');
+        return;
+      }
+      document.getElementById('start-screen').hidden = true;
+      document.getElementById('game-screen').hidden = false;
+      initializeQueue();
+      displayQuestion();
+    }
+
+    function shuffleDigits(number) {
+      let digits = number.toString().split('');
+
+      let allSame = digits.every(digit => digit === digits[0]);
+      if (allSame) {
+        return number;
+      }
+
+      // Shuffle the array of digits
+      for (let i = digits.length - 1; i > 0; i--) {
+        const j = rnd(i);
+        [digits[i], digits[j]] = [digits[j], digits[i]];
+      }
+
+      // Join the array back into a string and convert it to a number
+      let shuffledNumber = parseInt(digits.join(''), 10);
+
+      // If the shuffled number is the same as the original number, call the function again
+      if (shuffledNumber === number) {
+        return shuffleDigits(number);
+      }
+
+      return shuffledNumber;
+    }
+
+    function modDigit(number) {
+      // Convert the number to a string, then to an array of digits
+      let digits = number.toString().split('');
+
+      // Choose a random index from the array of digits
+      let randomIndex = rnd(digits.length - 1);
+
+      // Choose a random change between -4 and 4, excluding 0
+      let randomChange;
+      do {
+        randomChange = rnd(-4, 4);
+      } while (randomChange === 0);
+
+      // Modify the digit at the random index
+      let modifiedDigit = parseInt(digits[randomIndex], 10) + randomChange;
+
+      // Ensure the modified digit is within the range of 0 to 9
+      if (modifiedDigit < 0) {
+        modifiedDigit = 0;
+      } else if (modifiedDigit > 9) {
+        modifiedDigit = 9;
+      }
+
+      // Update the digit in the array
+      digits[randomIndex] = modifiedDigit.toString();
+
+      // Join the array back into a string and convert it to a number
+      return parseInt(digits.join(''), 10);
+    }
+
+    function modDigits(number) {
+      // Convert the number to a string, then to an array of digits
+      let digits = number.toString().split('');
+
+      // Choose two random indices from the array of digits
+      let index1 = rnd(digits.length - 1);
+      let index2;
+      do {
+        index2 = rnd(digits.length - 1);
+      } while (index2 === index1 && digits.length > 1);
+
+      // Choose a random change for the first digit (1 or 2 bigger or smaller)
+      let change1;
+      do {
+        change1 = rnd(-2, 2);
+      } while (change1 === 0);
+
+      // Choose a random change for the second digit (1 or 2 bigger or smaller)
+      let change2;
+      do {
+        change2 = rnd(-2, 2);
+      } while (change2 === 0);
+
+      // Modify the digits at the chosen indices
+      let modifiedDigit1 = parseInt(digits[index1], 10) + change1;
+      let modifiedDigit2 = parseInt(digits[index2], 10) + change2;
+
+      // Ensure the modified digits are within the range of 0 to 9
+      if (modifiedDigit1 < 0) {
+        modifiedDigit1 = 0;
+      } else if (modifiedDigit1 > 9) {
+        modifiedDigit1 = 9;
+      }
+
+      if (modifiedDigit2 < 0) {
+        modifiedDigit2 = 0;
+      } else if (modifiedDigit2 > 9) {
+        modifiedDigit2 = 9;
+      }
+
+      // Update the digits in the array
+      digits[index1] = modifiedDigit1.toString();
+      digits[index2] = modifiedDigit2.toString();
+
+      // Join the array back into a string and convert it to a number
+      return parseInt(digits.join(''), 10);
+    }
+
+    function multiplyModded(num1, num2) {
+      // Choose a random number to keep the same
+      let sameNumber, modifiedNumber;
+      if (rnd(1) === 0) {
+        sameNumber = num1;
+        modifiedNumber = num2;
+      } else {
+        sameNumber = num2;
+        modifiedNumber = num1;
+      }
+
+      // Choose a random change between -4 and 4, excluding 0
+      let randomChange;
+      do {
+        randomChange = rnd(-4, 4);
+      } while (randomChange === 0);
+
+      // Modify the chosen number
+      modifiedNumber += randomChange;
+
+      // Return the product of the same number and the modified number
+      return sameNumber * modifiedNumber;
+    }
+
+    function rnd(num1, num2) {
+      // If only one number is provided, set the lower limit to 0
+      if (num2 === undefined) {
+        num2 = num1;
+        num1 = 0;
+      }
+
+      // Ensure num1 is the lower limit and num2 is the upper limit
+      if (num1 > num2) {
+        [num1, num2] = [num2, num1];
+      }
+
+      // Generate a random integer between num1 and num2, inclusive
+      return Math.floor(Math.random() * (num2 - num1 + 1)) + num1;
+    }
+
+    function getBounce(number) {
+      // Calculate the range limits
+      const lowerLimit = number * 2;
+      const upperLimit = number * 4 + (number > 5 && number ** 2);
+
+      // Generate a random integer within the range
+      return rnd(lowerLimit, upperLimit);
+    }
+
+  </script>
+
+  <button style="position: absolute; top: 3; right: 3" onclick="localStorage.removeItem('mult100_state'); location.reload();"></button>
+</body>
+
+</html>
