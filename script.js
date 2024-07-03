@@ -78,7 +78,7 @@ function displayQuestion() {
     [a, b] = [b, a];
   }
 
-  document.getElementById('question').textContent = `${a} × ${b} = ?`;
+  document.getElementById('question').textContent = `${a} × ${b}`;
 
   const optionsContainer = document.getElementById('options');
 
